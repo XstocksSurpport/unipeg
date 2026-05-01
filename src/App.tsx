@@ -35,14 +35,14 @@ function scalePriceWeiForDemo(rawWei: string): string {
 let apiBackoffUntil = 0
 let apiBackoffMs = 0
 
-/** 开发环境优先走 Vite `/peg-api`；失败时再直连 Peg2Peg（见 pegFetchJson）。 */
+/** 统一走同源 `/peg-api` 代理（Vite dev / Vercel prod），规避浏览器 CORS。 */
 function pegBase(): string {
-  return import.meta.env.DEV ? '/peg-api' : PEG_API
+  return '/peg-api'
 }
 
 function apiBases(): string[] {
-  // In dev, direct server fetch is blocked by CORS; rely on Vite proxy only.
-  return import.meta.env.DEV ? [pegBase()] : [PEG_API]
+  // 生产环境同样必须经由平台代理；直连会被 server.peg2peg.app CORS 拦截。
+  return [pegBase()]
 }
 
 function shouldBackoffNow() {

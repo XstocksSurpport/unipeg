@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/peg-api/:path*",
+      "destination": "https://server.peg2peg.app/:path*"
+    }
+  ]
+}
