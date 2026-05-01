@@ -18,16 +18,6 @@ export default defineConfig({
   build: {
     sourcemap: false,
     minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        passes: 2,
-      },
-      mangle: true,
-      format: {
-        comments: false,
-      },
-    },
   },
   server: {
     proxy: pegProxy,
