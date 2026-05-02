@@ -1,32 +1,37 @@
 /**
  * 同源 /peg-api → Peg2Peg（默认 server.peg2peg.app）
- * 可用环境变量 PEG_UPSTREAM=https://server.peg2peg.app 覆盖。
+ * PEG_UPSTREAM 可覆盖上游根 URL。
+ *
+ * 不再挂自定义 dns.lookup：避免 Vercel 高并发下 getaddrinfo EBUSY。
+ * 用 dns.setDefaultResultOrder('ipv4first') 偏好 IPv4。
+ *
+ * 转发上游时去掉 query 里的 path/slug（Vercel 动态路由注入），否则会污染 Peg2Peg。
  */
 import https from 'node:https'
 import dns from 'node:dns'
 import { URL } from 'node:url'
 
-const UPSTREAM_BASE = (process.env.PEG_UPSTREAM || 'https://server.peg2peg.app').replace(/\/+$/, '')
-
-/** @param {'ipv4' | 'system'} mode */
-function makeLookup(mode) {
-  return (hostname, _options, callback) => {
-    if (mode === 'ipv4') {
-      dns.lookup(hostname, { family: 4, all: false }, callback)
-    } else {
-      dns.lookup(hostname, { all: false }, callback)
-    }
-  }
+try {
+  dns.setDefaultResultOrder('ipv4first')
+} catch {
+  // Node < 17 无此方法
 }
 
-/** Vercel Hobby 函数默认约 10s 上限；双次重试需留足余量 */
-const UPSTREAM_TIMEOUT_MS = 4000
+const UPSTREAM_BASE = (process.env.PEG_UPSTREAM || 'https://server.peg2peg.app').replace(/\/+$/, '')
 
-/**
- * @param {string} targetUrl
- * @param {'ipv4' | 'system'} dnsMode
- */
-function requestUpstream(targetUrl, method, acceptHeader, dnsMode) {
+const UPSTREAM_TIMEOUT_MS = 9000
+
+/** 去掉 Vercel / Next 风格注入的字段，只把真实查询参数带给 Peg2Peg */
+function cleanUpstreamSearch(reqUrl) {
+  const sp = new URLSearchParams(reqUrl.search)
+  sp.delete('path')
+  sp.delete('slug')
+  sp.delete('catchAll')
+  const s = sp.toString()
+  return s ? `?${s}` : ''
+}
+
+function requestUpstream(targetUrl, method, acceptHeader) {
   return new Promise((resolve, reject) => {
     const u = new URL(targetUrl)
     const opts = {
@@ -37,10 +42,9 @@ function requestUpstream(targetUrl, method, acceptHeader, dnsMode) {
       method: method === 'HEAD' ? 'HEAD' : 'GET',
       headers: {
         Accept: acceptHeader || 'application/json',
-        'User-Agent': 'unipeg-vercel-api-proxy/3',
+        'User-Agent': 'unipeg-vercel-api-proxy/4',
         Host: u.host,
       },
-      lookup: makeLookup(dnsMode),
       servername: u.hostname,
     }
     const req = https.request(opts, (inc) => {
@@ -61,15 +65,6 @@ function requestUpstream(targetUrl, method, acceptHeader, dnsMode) {
     })
     req.end()
   })
-}
-
-async function requestUpstreamWithFallback(targetUrl, method, acceptHeader) {
-  try {
-    return await requestUpstream(targetUrl, method, acceptHeader, 'ipv4')
-  } catch (e1) {
-    console.error('[peg-api] ipv4/system dns failed, retry system order', e1)
-    return await requestUpstream(targetUrl, method, acceptHeader, 'system')
-  }
 }
 
 function serializeErr(e) {
@@ -115,11 +110,12 @@ export default async function handler(req, res) {
   }
 
   const reqUrl = new URL(req.url || '/', 'http://localhost')
-  const upstreamUrl = `${UPSTREAM_BASE}/${subpath}${reqUrl.search}`
+  const search = cleanUpstreamSearch(reqUrl)
+  const upstreamUrl = `${UPSTREAM_BASE}/${subpath}${search}`
 
   try {
     const accept = typeof req.headers.accept === 'string' ? req.headers.accept : 'application/json'
-    const out = await requestUpstreamWithFallback(upstreamUrl, req.method, accept)
+    const out = await requestUpstream(upstreamUrl, req.method, accept)
     res.status(out.status)
     const h = out.headers
     if (h['content-type']) res.setHeader('Content-Type', h['content-type'])
