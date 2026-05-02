@@ -216,30 +216,31 @@ function serializeErr(e) {
 }
 
 function pegSubpathFromRequest(req) {
-  /** 必须先按 pathname 取全路径。Vercel 的 req.query.path 往往只有最后一段（如 792），会变成 /792 导致 404，正确应为 listings/792 */
+  /**
+   * Vercel 对 [...path] 不稳定：req.url 有时丢了多级路径，req.query.path 有时只有最后一段
+   *（如只要 0x… 或 792）。收集 pathname 与 query 两种来源，取 **更长** 的那个作为上游子路径。
+   */
+  const candidates = []
   try {
     const reqUrl = new URL(req.url || '/', 'http://localhost')
     const pathname = decodeURIComponent(reqUrl.pathname)
-    const apiMarker = '/api/peg/'
-    const pegMarker = '/peg-api/'
-    if (pathname.startsWith(apiMarker)) {
-      const rest = pathname.slice(apiMarker.length).replace(/\/+$/, '')
-      if (rest) return rest
+    for (const marker of ['/api/peg/', '/peg-api/']) {
+      if (pathname.startsWith(marker)) {
+        const rest = pathname.slice(marker.length).replace(/\/+$/, '')
+        if (rest) candidates.push(rest)
+      }
     }
-    if (pathname.startsWith(pegMarker)) {
-      const rest = pathname.slice(pegMarker.length).replace(/\/+$/, '')
-      if (rest) return rest
-    }
-    if (pathname === '/api/peg' || pathname === '/peg-api') return ''
   } catch {
     // ignore
   }
-  const raw = req.query.path
+  const raw = req.query?.path
   if (raw !== undefined && raw !== '') {
     const segments = Array.isArray(raw) ? raw : [String(raw)]
-    return segments.filter(Boolean).join('/')
+    const joined = segments.filter(Boolean).join('/')
+    if (joined) candidates.push(joined)
   }
-  return ''
+  if (!candidates.length) return ''
+  return candidates.sort((a, b) => b.length - a.length)[0]
 }
 
 /** Vercel 上 Accept 可能是 string[]；img 请求缺省时勿默认 application/json（SVG 会拿不到图） */
