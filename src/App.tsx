@@ -7,7 +7,8 @@ const NFT_CONTRACT = '0x44b28991B167582F18BA0259e0173176ca125505'
 const TREASURY = '0xa2b7DC1ffb4F4a1C0F9762f0CE5481FEf8FB857E'
 const NATIVE = '0x0000000000000000000000000000000000000000'
 
-const PEG_API = 'https://server.peg2peg.app'
+/** Peg2Peg 公网根（直连 SVG 等）。若官方换域名，在 Vercel 构建里设 VITE_PEG_API_ORIGIN。 */
+const PEG_API = (import.meta.env.VITE_PEG_API_ORIGIN ?? 'https://server.peg2peg.app').replace(/\/+$/, '')
 const VISIBLE_LISTING_LIMIT = 57
 const LISTING_CACHE_KEY = 'unipeg:listings:v2'
 const LISTING_CACHE_TTL_MS = 10 * 60_000
@@ -42,15 +43,14 @@ function apiBases(): string[] {
   return [pegBase()]
 }
 
-/** SVG 必须直连 Peg2Peg；避免 img 走代理路径异常导致全员裂图 */
+/** 直连 Peg2Peg 的 SVG URL（作候选；优先尝试走 /peg-api 代理） */
 function pegSvgHttpUrl(seedOrId: string) {
   return `${PEG_API}/upeg/${seedOrId}/svg`
 }
 
 function pegSvgCandidateUrls(seedOrId: string): string[] {
-  const urls = import.meta.env.DEV
-    ? [`/peg-api/upeg/${seedOrId}/svg`, pegSvgHttpUrl(seedOrId)]
-    : [pegSvgHttpUrl(seedOrId)]
+  // 先走同源 /peg-api（与 PEG_UPSTREAM 一致），公网直连域名若 DNS 失效时仍可能通过代理可用
+  const urls = [`/peg-api/upeg/${seedOrId}/svg`, pegSvgHttpUrl(seedOrId)]
   return Array.from(new Set(urls))
 }
 
