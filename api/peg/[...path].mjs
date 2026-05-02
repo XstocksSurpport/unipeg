@@ -18,8 +18,9 @@ try {
 
 const UPSTREAM_BASE = (process.env.PEG_UPSTREAM || 'https://server.p2peg.app').replace(/\/+$/, '')
 
-const UPSTREAM_TIMEOUT_MS = 7000
-const DOH_TIMEOUT_MS = 2500
+/** Hobby 函数墙钟约 10s：DoH 改为并行，避免顺序三轮耗尽时限触发平台 502 */
+const UPSTREAM_TIMEOUT_MS = 6500
+const DOH_TIMEOUT_MS = 2000
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/
 
@@ -163,8 +164,8 @@ async function resolveARecordDoh(hostname) {
     `https://dns.google/resolve?name=${encodeURIComponent(hostname)}&type=1`,
     `https://dns.quad9.net/dns-query?name=${encodeURIComponent(hostname)}&type=A`,
   ]
-  for (const url of urls) {
-    const j = await httpsGetJson(url, DOH_TIMEOUT_MS)
+  const results = await Promise.all(urls.map((url) => httpsGetJson(url, DOH_TIMEOUT_MS)))
+  for (const j of results) {
     const ip = pickAFromDohJson(j)
     if (ip) return ip
   }
