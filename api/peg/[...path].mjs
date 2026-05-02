@@ -216,25 +216,28 @@ function serializeErr(e) {
 }
 
 function pegSubpathFromRequest(req) {
-  const raw = req.query.path
-  if (raw !== undefined && raw !== '') {
-    const segments = Array.isArray(raw) ? raw : [String(raw)]
-    return segments.filter(Boolean).join('/')
-  }
+  /** 必须先按 pathname 取全路径。Vercel 的 req.query.path 往往只有最后一段（如 792），会变成 /792 导致 404，正确应为 listings/792 */
   try {
     const reqUrl = new URL(req.url || '/', 'http://localhost')
     const pathname = decodeURIComponent(reqUrl.pathname)
     const apiMarker = '/api/peg/'
     const pegMarker = '/peg-api/'
     if (pathname.startsWith(apiMarker)) {
-      return pathname.slice(apiMarker.length).replace(/\/+$/, '') || ''
+      const rest = pathname.slice(apiMarker.length).replace(/\/+$/, '')
+      if (rest) return rest
     }
     if (pathname.startsWith(pegMarker)) {
-      return pathname.slice(pegMarker.length).replace(/\/+$/, '') || ''
+      const rest = pathname.slice(pegMarker.length).replace(/\/+$/, '')
+      if (rest) return rest
     }
     if (pathname === '/api/peg' || pathname === '/peg-api') return ''
   } catch {
     // ignore
+  }
+  const raw = req.query.path
+  if (raw !== undefined && raw !== '') {
+    const segments = Array.isArray(raw) ? raw : [String(raw)]
+    return segments.filter(Boolean).join('/')
   }
   return ''
 }
