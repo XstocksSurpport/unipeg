@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 const pegProxy = {
   '/peg-api': {
-    target: 'https://server.peg2peg.app',
+    target: 'https://server.p2peg.app',
     changeOrigin: true,
     secure: true,
     rewrite: (path: string) => path.replace(/^\/peg-api/, ''),

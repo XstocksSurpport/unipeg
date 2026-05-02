@@ -7,6 +7,6 @@ const path =
 const text = fs.readFileSync(path, 'utf8')
 const re = /https?:\/\/[^"'\s)]+/g
 const urls = [...text.matchAll(re)].map((m) => m[0])
-const uniq = [...new Set(urls)].filter((u) => /peg2peg|\/api/i.test(u))
+const uniq = [...new Set(urls)].filter((u) => /peg2peg|p2peg|\/api/i.test(u))
 console.log(uniq.join('\n'))
 console.error('total', uniq.length)

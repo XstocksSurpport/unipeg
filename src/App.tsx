@@ -7,8 +7,8 @@ const NFT_CONTRACT = '0x44b28991B167582F18BA0259e0173176ca125505'
 const TREASURY = '0xa2b7DC1ffb4F4a1C0F9762f0CE5481FEf8FB857E'
 const NATIVE = '0x0000000000000000000000000000000000000000'
 
-/** Peg2Peg 公网根（直连 SVG 等）。若官方换域名，在 Vercel 构建里设 VITE_PEG_API_ORIGIN。 */
-const PEG_API = (import.meta.env.VITE_PEG_API_ORIGIN ?? 'https://server.peg2peg.app').replace(/\/+$/, '')
+/** Peg2Peg 公网根（直连 SVG 等）。默认随官网迁至 p2peg；也可用 VITE_PEG_API_ORIGIN 覆盖。 */
+const PEG_API = (import.meta.env.VITE_PEG_API_ORIGIN ?? 'https://server.p2peg.app').replace(/\/+$/, '')
 const VISIBLE_LISTING_LIMIT = 57
 const LISTING_CACHE_KEY = 'unipeg:listings:v2'
 const LISTING_CACHE_TTL_MS = 10 * 60_000
@@ -39,7 +39,7 @@ function pegBase(): string {
 }
 
 function apiBases(): string[] {
-  // 生产环境同样必须经由平台代理；直连会被 server.peg2peg.app CORS 拦截。
+  // 生产环境同样必须经由平台代理；直连会被 Peg API 源站 CORS 拦截。
   return [pegBase()]
 }
 

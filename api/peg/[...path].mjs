@@ -1,7 +1,7 @@
 /**
  * /peg-api → Peg2Peg
  *
- * - PEG_UPSTREAM：上游根 URL（默认 https://server.peg2peg.app）
+ * - PEG_UPSTREAM：上游根 URL（默认 https://server.p2peg.app）
  * - PEG_CONNECT_IP：若 Vercel 侧 DNS 全挂，在此填 **IPv4**（本机执行 nslookup/dig 得到），将跳过解析直连，TLS 仍用域名做 SNI。
  *
  * DoH 用 node:https 拉 JSON（不用全局 fetch，避免 Serverless 里 fetch 异常）。
@@ -16,7 +16,7 @@ try {
   // ignore
 }
 
-const UPSTREAM_BASE = (process.env.PEG_UPSTREAM || 'https://server.peg2peg.app').replace(/\/+$/, '')
+const UPSTREAM_BASE = (process.env.PEG_UPSTREAM || 'https://server.p2peg.app').replace(/\/+$/, '')
 
 const UPSTREAM_TIMEOUT_MS = 7000
 const DOH_TIMEOUT_MS = 2500
@@ -210,7 +210,7 @@ function serializeErr(e) {
     syscall: err.syscall,
     hint:
       err.code === 'ENOTFOUND'
-        ? 'On Vercel, set env PEG_CONNECT_IP to the A record IPv4 (run nslookup server.peg2peg.app on your computer) to bypass broken DNS in the function runtime.'
+        ? 'On Vercel, set env PEG_CONNECT_IP to the A record IPv4 (run nslookup server.p2peg.app on your computer) to bypass broken DNS in the function runtime.'
         : undefined,
   }
 }
