@@ -1,19 +1,32 @@
 /**
- * 同源 /peg-api → server.peg2peg.app
- * 不用全局 fetch：在 Vercel Node 上常见「TypeError: fetch failed」（IPv6/DNS/ undici），改用 https + 强制 IPv4。
+ * 同源 /peg-api → Peg2Peg（默认 server.peg2peg.app）
+ * 可用环境变量 PEG_UPSTREAM=https://server.peg2peg.app 覆盖。
  */
 import https from 'node:https'
 import dns from 'node:dns'
 import { URL } from 'node:url'
 
-const UPSTREAM = 'https://server.peg2peg.app'
+const UPSTREAM_BASE = (process.env.PEG_UPSTREAM || 'https://server.peg2peg.app').replace(/\/+$/, '')
 
-function lookupIpv4(hostname, _options, callback) {
-  dns.lookup(hostname, { family: 4, all: false }, callback)
+/** @param {'ipv4' | 'system'} mode */
+function makeLookup(mode) {
+  return (hostname, _options, callback) => {
+    if (mode === 'ipv4') {
+      dns.lookup(hostname, { family: 4, all: false }, callback)
+    } else {
+      dns.lookup(hostname, { all: false }, callback)
+    }
+  }
 }
 
-/** @param {string} targetUrl */
-function requestUpstream(targetUrl, method, acceptHeader) {
+/** Vercel Hobby 函数默认约 10s 上限；双次重试需留足余量 */
+const UPSTREAM_TIMEOUT_MS = 4000
+
+/**
+ * @param {string} targetUrl
+ * @param {'ipv4' | 'system'} dnsMode
+ */
+function requestUpstream(targetUrl, method, acceptHeader, dnsMode) {
   return new Promise((resolve, reject) => {
     const u = new URL(targetUrl)
     const opts = {
@@ -24,10 +37,10 @@ function requestUpstream(targetUrl, method, acceptHeader) {
       method: method === 'HEAD' ? 'HEAD' : 'GET',
       headers: {
         Accept: acceptHeader || 'application/json',
-        'User-Agent': 'unipeg-vercel-api-proxy/2',
+        'User-Agent': 'unipeg-vercel-api-proxy/3',
         Host: u.host,
       },
-      lookup: lookupIpv4,
+      lookup: makeLookup(dnsMode),
       servername: u.hostname,
     }
     const req = https.request(opts, (inc) => {
@@ -42,12 +55,30 @@ function requestUpstream(targetUrl, method, acceptHeader) {
       })
     })
     req.on('error', reject)
-    req.setTimeout(28_000, () => {
+    req.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
       req.destroy()
       reject(new Error('upstream timeout'))
     })
     req.end()
   })
+}
+
+async function requestUpstreamWithFallback(targetUrl, method, acceptHeader) {
+  try {
+    return await requestUpstream(targetUrl, method, acceptHeader, 'ipv4')
+  } catch (e1) {
+    console.error('[peg-api] ipv4/system dns failed, retry system order', e1)
+    return await requestUpstream(targetUrl, method, acceptHeader, 'system')
+  }
+}
+
+function serializeErr(e) {
+  const err = /** @type {NodeJS.ErrnoException} */ (e)
+  return {
+    message: String(e),
+    code: err.code,
+    syscall: err.syscall,
+  }
 }
 
 /** Vercel rewrite 后常常不把 [...path] 填进 req.query，必须从 pathname 解析 */
@@ -84,11 +115,11 @@ export default async function handler(req, res) {
   }
 
   const reqUrl = new URL(req.url || '/', 'http://localhost')
-  const upstreamUrl = `${UPSTREAM}/${subpath}${reqUrl.search}`
+  const upstreamUrl = `${UPSTREAM_BASE}/${subpath}${reqUrl.search}`
 
   try {
     const accept = typeof req.headers.accept === 'string' ? req.headers.accept : 'application/json'
-    const out = await requestUpstream(upstreamUrl, req.method, accept)
+    const out = await requestUpstreamWithFallback(upstreamUrl, req.method, accept)
     res.status(out.status)
     const h = out.headers
     if (h['content-type']) res.setHeader('Content-Type', h['content-type'])
@@ -96,6 +127,6 @@ export default async function handler(req, res) {
     res.send(out.body)
   } catch (e) {
     console.error('[peg-api]', upstreamUrl, e)
-    res.status(502).json({ error: { message: String(e) } })
+    res.status(502).json({ error: serializeErr(e), upstream: upstreamUrl })
   }
 }

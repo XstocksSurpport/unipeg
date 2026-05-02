@@ -4,5 +4,10 @@
       "source": "/peg-api/:path*",
       "destination": "/api/peg/:path*"
     }
-  ]
+  ],
+  "functions": {
+    "api/peg/[...path].mjs": {
+      "maxDuration": 10
+    }
+  }
 }
