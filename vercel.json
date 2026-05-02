@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/peg-api/:path*",
+      "destination": "/api/peg/:path*"
+    }
+  ]
+}
