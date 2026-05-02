@@ -32,9 +32,6 @@ function scalePriceWeiForDemo(rawWei: string): string {
   const out = (w * num) / den
   return out > 0n ? out.toString() : '1'
 }
-let apiBackoffUntil = 0
-let apiBackoffMs = 0
-
 /** 统一走同源 `/peg-api` 代理（Vite dev / Vercel prod），规避浏览器 CORS。 */
 function pegBase(): string {
   return '/peg-api'
@@ -43,20 +40,6 @@ function pegBase(): string {
 function apiBases(): string[] {
   // 生产环境同样必须经由平台代理；直连会被 server.peg2peg.app CORS 拦截。
   return [pegBase()]
-}
-
-function shouldBackoffNow() {
-  return Date.now() < apiBackoffUntil
-}
-
-function markApiFailureBackoff() {
-  apiBackoffMs = apiBackoffMs ? Math.min(30_000, Math.round(apiBackoffMs * 1.7)) : 2000
-  apiBackoffUntil = Date.now() + apiBackoffMs
-}
-
-function clearApiBackoff() {
-  apiBackoffMs = 0
-  apiBackoffUntil = 0
 }
 
 /** SVG 必须直连 Peg2Peg；避免 img 走代理路径异常导致全员裂图 */
@@ -360,7 +343,6 @@ function saveSeedCache(cache: Map<string, { id: string | null; seed: string | nu
 }
 
 async function fetchStatsOnly() {
-  if (shouldBackoffNow()) throw new Error('Peg2Peg API temporarily backed off')
   const bases = apiBases()
   let lastErr: unknown
   for (const base of bases) {
@@ -380,13 +362,11 @@ async function fetchStatsOnly() {
         holdersCount: number
         priceUsd?: number
       }
-      clearApiBackoff()
       return json
     } catch (e) {
       lastErr = e
     }
   }
-  markApiFailureBackoff()
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
 }
 
@@ -424,7 +404,6 @@ async function fetchOwnerSeed(positionContract: string): Promise<{ id: string; s
 }
 
 async function pegFetchJson<T>(path: string): Promise<T> {
-  if (shouldBackoffNow()) throw new Error('Peg2Peg API temporarily backed off')
   const bases = apiBases()
   let lastErr: unknown
   for (const base of bases) {
@@ -435,13 +414,11 @@ async function pegFetchJson<T>(path: string): Promise<T> {
         throw new Error(`Peg2Peg API ${path} failed: ${response.status} ${text}`)
       }
       const json = (await response.json()) as T
-      clearApiBackoff()
       return json
     } catch (e) {
       lastErr = e
     }
   }
-  markApiFailureBackoff()
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
 }
 
