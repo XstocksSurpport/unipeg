@@ -3,6 +3,10 @@
     {
       "source": "/peg-api/:path*",
       "destination": "/api/peg/:path*"
+    },
+    {
+      "source": "/peg_api/:path*",
+      "destination": "/api/peg/:path*"
     }
   ],
   "functions": {

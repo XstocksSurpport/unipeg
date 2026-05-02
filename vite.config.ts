@@ -1,13 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const pegTarget = {
+  target: 'https://server.p2peg.app',
+  changeOrigin: true,
+  secure: true,
+} as const
 const pegProxy = {
-  '/peg-api': {
-    target: 'https://server.p2peg.app',
-    changeOrigin: true,
-    secure: true,
-    rewrite: (path: string) => path.replace(/^\/peg-api/, ''),
-  },
+  '/peg-api': { ...pegTarget, rewrite: (path: string) => path.replace(/^\/peg-api/, '') },
+  /** 与连字符路径等价；避免误用下划线时开发环境 404 */
+  '/peg_api': { ...pegTarget, rewrite: (path: string) => path.replace(/^\/peg_api/, '') },
 } as const
 
 const noStore = { 'Cache-Control': 'no-store' } as const

@@ -224,7 +224,7 @@ function pegSubpathFromRequest(req) {
   try {
     const reqUrl = new URL(req.url || '/', 'http://localhost')
     const pathname = decodeURIComponent(reqUrl.pathname)
-    for (const marker of ['/api/peg/', '/peg-api/']) {
+    for (const marker of ['/api/peg/', '/peg-api/', '/peg_api/']) {
       if (pathname.startsWith(marker)) {
         const rest = pathname.slice(marker.length).replace(/\/+$/, '')
         if (rest) candidates.push(rest)
