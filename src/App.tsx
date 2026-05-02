@@ -855,35 +855,56 @@ function App() {
         setListingsProgress(null)
       }
       try {
+        // 分项容错：避免某一接口超时/5xx 拖垮整屏（原先 Promise.all 会全失败）
         const [pegStats, readyFloorWei, activity, liveEthUsd] = await Promise.all([
-          fetchStatsOnly(),
+          fetchStatsOnly().catch((e) => {
+            console.error(e)
+            return null
+          }),
           fetchReadyFloorWei().catch(() => '0'),
-          pegFetchJson<PegActivityApiRow[]>('/activity?limit=220'),
+          pegFetchJson<PegActivityApiRow[]>('/activity?limit=220').catch((e) => {
+            console.error(e)
+            return null
+          }),
           fetchLiveEthUsd(),
         ])
         if (cancelled) return
 
-        const nextStats = {
-          floorWei: readyFloorWei !== '0' ? readyFloorWei : pegStats.floorPriceWei,
-          volumeWei: pegStats.volumeWei,
-          items: pegStats.upegsTotal,
-          holders: pegStats.holdersCount,
-          priceUsd: Number(liveEthUsd ?? pegStats.priceUsd ?? 0),
+        if (pegStats) {
+          const nextStats = {
+            floorWei: readyFloorWei !== '0' ? readyFloorWei : pegStats.floorPriceWei,
+            volumeWei: pegStats.volumeWei,
+            items: pegStats.upegsTotal,
+            holders: pegStats.holdersCount,
+            priceUsd: Number(liveEthUsd ?? pegStats.priceUsd ?? 0),
+          }
+          setStats(nextStats)
+          saveStatsCache(nextStats)
         }
-        setStats(nextStats)
-        saveStatsCache(nextStats)
 
-        const activityRows: TxItem[] = activity.map((row) => ({
-          txHash: row.txHash,
-          positionId: row.positionId,
-          from: row.actor,
-          eventType: row.eventType,
-          priceWei: row.priceWei,
-          timestamp: row.timestamp,
-          tokenId: BigInt(row.positionId),
-          blockNumber: BigInt(row.blockNumber),
-        }))
-        setTxs(activityRows)
+        if (activity && Array.isArray(activity)) {
+          const activityRows: TxItem[] = activity.map((row) => ({
+            txHash: row.txHash,
+            positionId: row.positionId,
+            from: row.actor,
+            eventType: row.eventType,
+            priceWei: row.priceWei,
+            timestamp: row.timestamp,
+            tokenId: BigInt(row.positionId),
+            blockNumber: BigInt(row.blockNumber),
+          }))
+          setTxs(activityRows)
+        }
+
+        if (
+          !cancelled &&
+          !pegStats &&
+          !activity &&
+          !loadStatsCache() &&
+          !loadListingCache()
+        ) {
+          setError('Peg2Peg 统计/活动加载失败，请稍后刷新。（详情见控制台）')
+        }
       } catch (loadError) {
         console.error(loadError)
         if (!cancelled && !loadStatsCache() && !loadListingCache()) {
