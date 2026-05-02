@@ -1,5 +1,54 @@
-/** 同源 /peg-api → server.peg2peg.app（Node Serverless，比 Edge middleware 在纯静态部署里更稳） */
+/**
+ * 同源 /peg-api → server.peg2peg.app
+ * 不用全局 fetch：在 Vercel Node 上常见「TypeError: fetch failed」（IPv6/DNS/ undici），改用 https + 强制 IPv4。
+ */
+import https from 'node:https'
+import dns from 'node:dns'
+import { URL } from 'node:url'
+
 const UPSTREAM = 'https://server.peg2peg.app'
+
+function lookupIpv4(hostname, _options, callback) {
+  dns.lookup(hostname, { family: 4, all: false }, callback)
+}
+
+/** @param {string} targetUrl */
+function requestUpstream(targetUrl, method, acceptHeader) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(targetUrl)
+    const opts = {
+      agent: false,
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      method: method === 'HEAD' ? 'HEAD' : 'GET',
+      headers: {
+        Accept: acceptHeader || 'application/json',
+        'User-Agent': 'unipeg-vercel-api-proxy/2',
+        Host: u.host,
+      },
+      lookup: lookupIpv4,
+      servername: u.hostname,
+    }
+    const req = https.request(opts, (inc) => {
+      const chunks = []
+      inc.on('data', (c) => chunks.push(c))
+      inc.on('end', () => {
+        resolve({
+          status: inc.statusCode ?? 500,
+          headers: inc.headers,
+          body: Buffer.concat(chunks),
+        })
+      })
+    })
+    req.on('error', reject)
+    req.setTimeout(28_000, () => {
+      req.destroy()
+      reject(new Error('upstream timeout'))
+    })
+    req.end()
+  })
+}
 
 /** Vercel rewrite 后常常不把 [...path] 填进 req.query，必须从 pathname 解析 */
 function pegSubpathFromRequest(req) {
@@ -38,18 +87,13 @@ export default async function handler(req, res) {
   const upstreamUrl = `${UPSTREAM}/${subpath}${reqUrl.search}`
 
   try {
-    const r = await fetch(upstreamUrl, {
-      method: req.method,
-      headers: {
-        Accept: req.headers.accept || 'application/json',
-        'User-Agent': 'unipeg-vercel-api-proxy/1',
-      },
-      cache: 'no-store',
-    })
-    const buf = Buffer.from(await r.arrayBuffer())
-    const ct = r.headers.get('content-type')
-    if (ct) res.setHeader('Content-Type', ct)
-    res.status(r.status).send(buf)
+    const accept = typeof req.headers.accept === 'string' ? req.headers.accept : 'application/json'
+    const out = await requestUpstream(upstreamUrl, req.method, accept)
+    res.status(out.status)
+    const h = out.headers
+    if (h['content-type']) res.setHeader('Content-Type', h['content-type'])
+    if (h['content-encoding']) res.setHeader('Content-Encoding', h['content-encoding'])
+    res.send(out.body)
   } catch (e) {
     console.error('[peg-api]', upstreamUrl, e)
     res.status(502).json({ error: { message: String(e) } })
