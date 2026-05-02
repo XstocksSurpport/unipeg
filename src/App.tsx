@@ -12,7 +12,7 @@ const PEG_API = (import.meta.env.VITE_PEG_API_ORIGIN ?? 'https://server.p2peg.ap
 /** 换域/修代理后 bump，避免 localStorage 里存了旧版错图 */
 const upegSvgCacheKey = (id: string) => `upeg-svg:v2:${id}`
 const VISIBLE_LISTING_LIMIT = 57
-const LISTING_CACHE_KEY = 'unipeg:listings:v2'
+const LISTING_CACHE_KEY = 'unipeg:listings:v3'
 const LISTING_CACHE_TTL_MS = 10 * 60_000
 const STATS_CACHE_KEY = 'unipeg:stats:v1'
 const STATS_CACHE_TTL_MS = 90_000
@@ -110,12 +110,14 @@ type PegListingApi = {
   status: string
   createdTxHash: string
   createdAt: string
+  /** 新版 Peg API 在列表里即返回，可不再依赖 /upegs/owner 才能出图 */
+  upegIds?: string[]
+  firstSeed?: string
 }
 
 /** `/listings/:id` — includes buyer / upegIds for Activity enrichment */
 type PegListingDetailApi = PegListingApi & {
   buyer?: string | null
-  upegIds?: string[]
 }
 
 type ListingRow = PegListingApi & {
@@ -805,8 +807,8 @@ function App() {
       const prev = prevByPos.get(l.positionContract)
       return {
         ...l,
-        previewUpegId: prev?.previewUpegId ?? null,
-        previewSeed: prev?.previewSeed ?? null,
+        previewUpegId: prev?.previewUpegId ?? l.upegIds?.[0] ?? null,
+        previewSeed: prev?.previewSeed ?? l.firstSeed ?? null,
       }
     })
   }, [])
