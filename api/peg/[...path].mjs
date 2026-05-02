@@ -1,11 +1,35 @@
 /** 同源 /peg-api → server.peg2peg.app（Node Serverless，比 Edge middleware 在纯静态部署里更稳） */
 const UPSTREAM = 'https://server.peg2peg.app'
 
-export default async function handler(req, res) {
+/** Vercel rewrite 后常常不把 [...path] 填进 req.query，必须从 pathname 解析 */
+function pegSubpathFromRequest(req) {
   const raw = req.query.path
-  const segments = Array.isArray(raw) ? raw : raw != null && raw !== '' ? [String(raw)] : []
-  const subpath = segments.join('/')
+  if (raw !== undefined && raw !== '') {
+    const segments = Array.isArray(raw) ? raw : [String(raw)]
+    return segments.filter(Boolean).join('/')
+  }
+  try {
+    const reqUrl = new URL(req.url || '/', 'http://localhost')
+    const pathname = decodeURIComponent(reqUrl.pathname)
+    const apiMarker = '/api/peg/'
+    const pegMarker = '/peg-api/'
+    if (pathname.startsWith(apiMarker)) {
+      return pathname.slice(apiMarker.length).replace(/\/+$/, '') || ''
+    }
+    if (pathname.startsWith(pegMarker)) {
+      return pathname.slice(pegMarker.length).replace(/\/+$/, '') || ''
+    }
+    if (pathname === '/api/peg' || pathname === '/peg-api') return ''
+  } catch {
+    // ignore
+  }
+  return ''
+}
+
+export default async function handler(req, res) {
+  const subpath = pegSubpathFromRequest(req)
   if (!subpath || subpath.includes('..')) {
+    console.error('[peg-api] bad path', { url: req.url, query: req.query })
     res.status(400).json({ error: 'Bad path' })
     return
   }
