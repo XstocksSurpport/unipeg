@@ -239,6 +239,23 @@ function pegSubpathFromRequest(req) {
   return ''
 }
 
+/** Vercel 上 Accept 可能是 string[]；img 请求缺省时勿默认 application/json（SVG 会拿不到图） */
+function normalizeAcceptHeader(req) {
+  const a = req.headers.accept
+  if (Array.isArray(a)) return a.filter(Boolean).join(', ')
+  if (typeof a === 'string') return a
+  return ''
+}
+
+function upstreamAccept(req, subpath) {
+  if (/\/svg$/i.test(subpath)) {
+    return 'image/svg+xml,text/plain,*/*'
+  }
+  const fromClient = normalizeAcceptHeader(req)
+  if (fromClient) return fromClient
+  return 'application/json'
+}
+
 export default async function handler(req, res) {
   const subpath = pegSubpathFromRequest(req)
   if (!subpath || subpath.includes('..')) {
@@ -252,7 +269,7 @@ export default async function handler(req, res) {
   const upstreamUrl = `${UPSTREAM_BASE}/${subpath}${search}`
 
   try {
-    const accept = typeof req.headers.accept === 'string' ? req.headers.accept : 'application/json'
+    const accept = upstreamAccept(req, subpath)
     const out = await requestUpstreamResilient(upstreamUrl, req.method, accept)
     res.status(out.status)
     const h = out.headers

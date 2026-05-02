@@ -9,6 +9,8 @@ const NATIVE = '0x0000000000000000000000000000000000000000'
 
 /** Peg2Peg 公网根（直连 SVG 等）。默认随官网迁至 p2peg；也可用 VITE_PEG_API_ORIGIN 覆盖。 */
 const PEG_API = (import.meta.env.VITE_PEG_API_ORIGIN ?? 'https://server.p2peg.app').replace(/\/+$/, '')
+/** 换域/修代理后 bump，避免 localStorage 里存了旧版错图 */
+const upegSvgCacheKey = (id: string) => `upeg-svg:v2:${id}`
 const VISIBLE_LISTING_LIMIT = 57
 const LISTING_CACHE_KEY = 'unipeg:listings:v2'
 const LISTING_CACHE_TTL_MS = 10 * 60_000
@@ -69,7 +71,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 
 async function resolveSvgDataUrl(key: string): Promise<string | null> {
   try {
-    const cached = sessionStorage.getItem(`upeg-svg:${key}`) ?? localStorage.getItem(`upeg-svg:${key}`)
+    const cached = sessionStorage.getItem(upegSvgCacheKey(key)) ?? localStorage.getItem(upegSvgCacheKey(key))
     if (cached) return cached
   } catch {
     // ignore
@@ -84,8 +86,8 @@ async function resolveSvgDataUrl(key: string): Promise<string | null> {
         if (!text.trim()) continue
         const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`
         try {
-          sessionStorage.setItem(`upeg-svg:${key}`, dataUrl)
-          localStorage.setItem(`upeg-svg:${key}`, dataUrl)
+          sessionStorage.setItem(upegSvgCacheKey(key), dataUrl)
+          localStorage.setItem(upegSvgCacheKey(key), dataUrl)
         } catch {
           // ignore
         }
@@ -489,7 +491,7 @@ function UpegSvgImg({
   useEffect(() => {
     let cancelled = false
     try {
-      const cached = sessionStorage.getItem(`upeg-svg:${keyList[0] ?? imageKey}`)
+      const cached = sessionStorage.getItem(upegSvgCacheKey(keyList[0] ?? imageKey))
       if (cached) {
         setKeyIdx(0)
         setPickedId(keyList[0] ?? imageKey)
@@ -499,7 +501,7 @@ function UpegSvgImg({
         setBroken(false)
         return
       }
-      const persisted = localStorage.getItem(`upeg-svg:${keyList[0] ?? imageKey}`)
+      const persisted = localStorage.getItem(upegSvgCacheKey(keyList[0] ?? imageKey))
       if (persisted) {
         setKeyIdx(0)
         setPickedId(keyList[0] ?? imageKey)
@@ -508,7 +510,7 @@ function UpegSvgImg({
         retried.current = true
         setBroken(false)
         try {
-          sessionStorage.setItem(`upeg-svg:${keyList[0] ?? imageKey}`, persisted)
+          sessionStorage.setItem(upegSvgCacheKey(keyList[0] ?? imageKey), persisted)
         } catch {
           // ignore
         }
@@ -564,26 +566,22 @@ function UpegSvgImg({
     }
     retried.current = true
     try {
-      const res = await fetch(pegSvgHttpUrl(pickedId), {
-        headers: { accept: 'image/svg+xml,text/plain,*/*' },
-      })
-      if (!res.ok) {
-        setBroken(true)
+      for (const url of pegSvgCandidateUrls(pickedId)) {
+        const res = await fetch(url, { headers: { accept: 'image/svg+xml,text/plain,*/*' } })
+        if (!res.ok) continue
+        const text = await res.text()
+        if (!text.trim()) continue
+        const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`
+        setSrc(dataUrl)
+        try {
+          sessionStorage.setItem(upegSvgCacheKey(pickedId), dataUrl)
+          localStorage.setItem(upegSvgCacheKey(pickedId), dataUrl)
+        } catch {
+          // ignore
+        }
         return
       }
-      const text = await res.text()
-      if (!text.trim()) {
-        setBroken(true)
-        return
-      }
-      const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`
-      setSrc(dataUrl)
-      try {
-        sessionStorage.setItem(`upeg-svg:${pickedId}`, dataUrl)
-        localStorage.setItem(`upeg-svg:${pickedId}`, dataUrl)
-      } catch {
-        // ignore
-      }
+      setBroken(true)
     } catch {
       setBroken(true)
     }
